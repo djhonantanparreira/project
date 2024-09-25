@@ -10,6 +10,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: projeto_base
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+
     steps:
       - name: Checkout do código
         uses: actions/checkout@v3
@@ -20,12 +34,26 @@ jobs:
           php-version: "8.0"
           ini-values: zend.assertions=1, assert.exception=1
 
-      - name: Configurar banco de dados MySQL
-        uses: mirromutth/mysql-action@v1
-        with:
-          mysql database: "projeto_base"
-          mysql user: "root"
-          mysql password: ""
+      - name: Aguardar o MySQL iniciar
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h127.0.0.1 -uroot -proot --silent; then
+              echo "MySQL está pronto"
+              break
+            fi
+            echo "Aguardando o MySQL iniciar..."
+            sleep 1
+          done
+
+      - name: Criar banco de dados e tabelas
+        run: |
+          mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS projeto_base;"
+          mysql -h127.0.0.1 -uroot -proot projeto_base < app/tests/schema.sql
 
       - name: Executar testes
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: projeto_base
+          DB_USER: root
+          DB_PASS: root
         run: php app/tests/runTests.php
